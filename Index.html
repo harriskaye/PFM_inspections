@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PFM Inspection Planner</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg:#141410;--surf:#1c1c16;--surf2:#202018;--bdr:#2e2e22;--bdr2:#3a3a28;
+  --txt:#e0dac8;--mut:#6a6a52;--mut2:#8a8a68;--acc:#e8c84a;
+  --overdue:#e84a4a;--soon:#e8c84a;--good:#4ae878;
+}
+html,body{height:100%;background:var(--bg);color:var(--txt);font-family:'DM Mono',monospace;}
+
+nav{display:flex;align-items:center;background:var(--bg);border-bottom:1px solid var(--bdr);padding:0 20px;height:48px;position:relative;z-index:2000;flex-shrink:0;}
+.brand{font-family:'DM Serif Display',serif;font-size:1rem;color:var(--acc);margin-right:24px;white-space:nowrap;}
+.tab-btn{height:48px;padding:0 18px;background:none;border:none;border-bottom:2px solid transparent;color:var(--mut);font-family:'DM Mono',monospace;font-size:0.62rem;text-transform:uppercase;letter-spacing:.1em;cursor:pointer;}
+.tab-btn.active{color:var(--acc);border-bottom-color:var(--acc);}
+.nav-right{margin-left:auto;display:flex;align-items:center;gap:7px;}
+.tbtn{display:flex;align-items:center;gap:5px;padding:4px 9px;border-radius:3px;font-family:'DM Mono',monospace;font-size:0.57rem;text-transform:uppercase;letter-spacing:.06em;cursor:pointer;border:1px solid;transition:opacity .15s;white-space:nowrap;}
+.tbtn .dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.tbtn.off{opacity:.25;}
+.to{background:#e84a4a0d;border-color:#e84a4a44;color:#e84a4a;} .to .dot{background:#e84a4a;box-shadow:0 0 4px #e84a4a;}
+.ts{background:#e8c84a0d;border-color:#e8c84a44;color:#e8c84a;} .ts .dot{background:#e8c84a;box-shadow:0 0 4px #e8c84a;}
+.tg{background:#4ae8780d;border-color:#4ae87844;color:#4ae878;} .tg .dot{background:#4ae878;box-shadow:0 0 4px #4ae878;}
+
+.page{display:none;} .page.active{display:flex;flex-direction:column;}
+#page-map{height:calc(100vh - 48px);}
+#map{flex:1;min-height:400px;}
+.legend{position:absolute;top:64px;right:16px;background:rgba(20,20,16,.95);border:1px solid var(--bdr);border-radius:4px;padding:12px 14px;z-index:1000;pointer-events:none;min-width:160px;}
+.legend h4{font-family:'DM Serif Display',serif;font-size:.82rem;color:var(--acc);margin-bottom:8px;}
+.lr{display:flex;justify-content:space-between;font-size:.59rem;color:var(--mut);padding:3px 0;border-bottom:1px solid #1e1e16;text-transform:uppercase;letter-spacing:.04em;}
+.lr:last-child{border:none;}
+
+/* TRIPS */
+#page-trips{height:calc(100vh - 48px);display:flex;flex-direction:row;overflow:hidden;}
+.sidebar{width:230px;flex-shrink:0;border-right:1px solid var(--bdr);overflow-y:auto;padding:14px 0;}
+.sidebar h3{font-family:'DM Serif Display',serif;font-size:.7rem;color:var(--mut);text-transform:uppercase;letter-spacing:.1em;padding:0 16px 10px;}
+.trip-item{display:flex;align-items:center;gap:9px;padding:10px 16px;cursor:pointer;border-left:3px solid transparent;transition:background .1s;}
+.trip-item:hover{background:var(--surf);} .trip-item.active{background:var(--surf);border-left-color:var(--acc);}
+.swatch{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+.ti-info{flex:1;min-width:0;}
+.ti-name{font-size:.72rem;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.ti-meta{font-size:.58rem;color:var(--mut);margin-top:2px;}
+
+.tmain{flex:1;overflow-y:auto;display:flex;flex-direction:column;min-height:0;}
+.empty{color:var(--mut);font-size:.75rem;margin-top:80px;text-align:center;}
+
+.trip-header{padding:18px 26px 16px;border-bottom:1px solid var(--bdr);display:flex;gap:16px;align-items:center;flex-shrink:0;}
+.trip-color-stripe{width:3px;border-radius:2px;flex-shrink:0;align-self:stretch;min-height:32px;}
+.trip-header-info{flex:1;}
+.trip-title{font-family:'DM Serif Display',serif;font-size:1.5rem;color:var(--txt);line-height:1.2;}
+.map-view-btn{background:none;border:1px solid var(--bdr);border-radius:3px;color:var(--mut2);font-family:'DM Mono',monospace;font-size:.58rem;text-transform:uppercase;letter-spacing:.06em;padding:6px 12px;cursor:pointer;white-space:nowrap;transition:color .15s,border-color .15s;flex-shrink:0;}
+.map-view-btn:hover{color:var(--acc);border-color:var(--acc);}
+
+.trip-body{flex:1;position:relative;}
+.trip-days-col{padding:20px 26px;}
+
+/* MAP OVERLAY — hidden until activated */
+.trip-map-overlay{display:none;position:absolute;inset:0;z-index:200;flex-direction:column;background:var(--bg);}
+.trip-map-overlay.active{display:flex;}
+.map-overlay-header{padding:10px 16px;border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.map-overlay-title{font-size:.62rem;text-transform:uppercase;letter-spacing:.08em;color:var(--mut);}
+.map-tooltip{background:rgba(20,20,16,.95)!important;border:1px solid var(--bdr)!important;border-radius:3px!important;color:var(--txt)!important;font-family:'DM Mono',monospace!important;font-size:.65rem!important;padding:3px 8px!important;box-shadow:0 2px 8px rgba(0,0,0,.5)!important;}
+.map-tooltip::before{display:none!important;}
+.map-close-btn{background:none;border:1px solid var(--bdr);border-radius:3px;color:var(--mut2);font-family:'DM Mono',monospace;font-size:.58rem;text-transform:uppercase;letter-spacing:.06em;padding:4px 10px;cursor:pointer;transition:color .15s,border-color .15s;}
+.map-close-btn:hover{color:var(--acc);border-color:var(--acc);}
+.trip-minimap{flex:1;}
+
+/* DAY SECTIONS */
+.day-section{margin-bottom:22px;}
+.day-hdr{margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--bdr);}
+.day-label{font-family:'DM Serif Display',serif;font-size:1.05rem;color:var(--txt);}
+
+/* VENDOR CARDS */
+.vcard{background:var(--surf);border:1px solid var(--bdr);border-radius:5px;margin-bottom:8px;overflow:hidden;}
+.vcard:hover{border-color:var(--bdr2);}
+.vcard-inner{display:flex;align-items:center;gap:12px;padding:13px 15px;}
+.vstatus-bar{width:3px;border-radius:2px;align-self:stretch;flex-shrink:0;min-height:30px;}
+.vcard-main{flex:1;min-width:0;}
+.vname{font-size:.85rem;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.vloc-row{display:flex;align-items:center;gap:8px;margin-top:5px;flex-wrap:wrap;}
+.vloc{font-size:.64rem;color:var(--mut2);}
+.vlast{font-size:.6rem;color:var(--mut);padding:2px 6px;background:var(--surf2);border-radius:2px;border:1px solid var(--bdr);}
+.vtag{font-size:.56rem;text-transform:uppercase;letter-spacing:.07em;padding:3px 7px;border-radius:3px;flex-shrink:0;font-weight:500;}
+.tag-overdue{background:#e84a4a15;color:#e84a4a;border:1px solid #e84a4a30;}
+.tag-soon{background:#e8c84a15;color:#e8c84a;border:1px solid #e8c84a30;}
+.tag-good{background:#4ae87815;color:#4ae878;border:1px solid #4ae87830;}
+.vmissing{background:var(--surf);border:1px solid #e84a4a22;border-radius:4px;padding:10px 14px;margin-bottom:8px;font-size:.7rem;color:#e84a4a55;font-style:italic;}
+
+::-webkit-scrollbar{width:5px;} ::-webkit-scrollbar-track{background:transparent;} ::-webkit-scrollbar-thumb{background:var(--bdr);border-radius:3px;}
+.leaflet-popup-content-wrapper{background:#1e1e16;border:1px solid #3a3a28;border-radius:4px;box-shadow:0 4px 20px rgba(0,0,0,.6);}
+.leaflet-popup-tip{background:#1e1e16;}
+.leaflet-popup-content{margin:10px 14px;font-family:'DM Mono',monospace;font-size:.68rem;color:#b0aa98;}
+.pname{font-family:'DM Serif Display',serif;font-size:.92rem;color:#e0dac8;margin-bottom:4px;}
+.ptag{display:inline-block;padding:1px 6px;border-radius:2px;font-size:.56rem;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;}
+.pd{margin-top:2px;color:#6a6a52;} .pd span{color:#b0aa98;}
+.vendor-tip{background:rgba(20,20,16,.95)!important;border:1px solid #3a3a28!important;border-radius:3px!important;color:#e0dac8!important;font-family:'DM Mono',monospace!important;font-size:.65rem!important;padding:3px 8px!important;box-shadow:0 2px 8px rgba(0,0,0,.5)!important;white-space:nowrap!important;}
+.vendor-tip.leaflet-tooltip-top::before{border-top-color:#3a3a28!important;}
+/* SEARCH */
+.search-wrap{position:absolute;top:64px;left:16px;z-index:1000;width:260px;}
+.search-input{width:100%;background:rgba(20,20,16,.95);border:1px solid var(--bdr);border-radius:4px;padding:8px 12px 8px 32px;font-family:'DM Mono',monospace;font-size:.72rem;color:var(--txt);outline:none;transition:border-color .15s;}
+.search-input:focus{border-color:var(--acc);}
+.search-input::placeholder{color:var(--mut);}
+.search-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--mut);font-size:.75rem;pointer-events:none;}
+.search-results{background:rgba(20,20,16,.97);border:1px solid var(--bdr);border-top:none;border-radius:0 0 4px 4px;max-height:240px;overflow-y:auto;display:none;}
+.search-results.open{display:block;}
+.sr-item{padding:8px 12px;font-size:.7rem;color:var(--txt);cursor:pointer;display:flex;align-items:center;gap:8px;border-bottom:1px solid #1e1e16;}
+.sr-item:last-child{border:none;}
+.sr-item:hover{background:var(--surf);}
+.sr-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.sr-loc{font-size:.6rem;color:var(--mut);margin-left:auto;}
+.search-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--mut);cursor:pointer;font-size:.8rem;display:none;}
+
+/* HIGHLIGHT PULSE */
+@keyframes pulse{0%{transform:scale(1);}50%{transform:scale(2.2);}100%{transform:scale(1);}}
+.pin-highlight{animation:pulse .5s ease-in-out 3;}
+</style>
+</head>
+<body>
+<nav>
+  <span class="brand">PFM Inspections</span>
+  <button class="tab-btn active" onclick="showTab('map',this)">Map</button>
+  <button class="tab-btn" onclick="showTab('trips',this)">Trip Planner</button>
+  <div class="nav-right" id="map-toggles">
+    <button class="tbtn to" data-group="overdue" onclick="toggleGroup(this)"><span class="dot"></span>Overdue</button>
+    <button class="tbtn ts" data-group="soon"    onclick="toggleGroup(this)"><span class="dot"></span>Due 2026</button>
+    <button class="tbtn tg" data-group="good"    onclick="toggleGroup(this)"><span class="dot"></span>Current</button>
+  </div>
+</nav>
+
+<div id="page-map" class="page active">
+  <div id="map"></div>
+  <div class="search-wrap" id="search-wrap">
+    <span class="search-icon">⌕</span>
+    <input class="search-input" id="search-input" type="text" placeholder="Search vendors…" autocomplete="off">
+    <button class="search-clear" id="search-clear" onclick="clearSearch()">✕</button>
+    <div class="search-results" id="search-results"></div>
+  </div>
+  <div class="legend">
+    <h4>Status</h4>
+    <div class="lr"><span>Overdue</span><span style="color:#e84a4a" id="ct-overdue">—</span></div>
+    <div class="lr"><span>Due this year</span><span style="color:#e8c84a" id="ct-soon">—</span></div>
+    <div class="lr"><span>Current</span><span style="color:#4ae878" id="ct-good">—</span></div>
+  </div>
+</div>
+
+<div id="page-trips" class="page">
+  <div class="sidebar">
+    <h3>Trips</h3>
+    <div id="trip-stats" style="padding:0 16px 12px;border-bottom:1px solid var(--bdr);margin-bottom:8px;">
+      <div style="font-size:.65rem;color:var(--acc);margin-bottom:4px;"><span id="stat-days">—</span> inspection days</div>
+      <div style="font-size:.65rem;color:var(--mut);"><span id="stat-done" style="color:#4ae878">—</span> / <span id="stat-total">—</span> vendors current</div>
+    </div>
+    <div id="trip-list"></div>
+  </div>
+  <div class="tmain" id="tmain">
+    <div class="empty">← Select a trip</div>
+  </div>
+</div>
+
+<script>
+var AIRTABLE_TOKEN = 'patne27Rj2N9KDWf7.43066582d7d955e17077f099cf0e27971bd84564761d44689947242784ae676f';
+var AIRTABLE_BASE  = 'app8ODAjKug9LqAUY';
+var AIRTABLE_TABLE = 'tbl23mfjX4WpYfsXM';
+
+// Critical + Overdue both → 'overdue' (red)
+function statusToGroup(status) {
+  if (!status) return 'overdue';
+  var s = status.toLowerCase();
+  if (s === 'current') return 'good';
+  if (s === 'due 2026') return 'soon';
+  if (s === 'not applicable' || s === 'n/a') return 'good'; // treat as current/hide
+  return 'overdue';
+}
+
+async function fetchVendorsFromAirtable() {
+  var allRecords = [], offset = null;
+  var url = 'https://api.airtable.com/v0/' + AIRTABLE_BASE + '/' + AIRTABLE_TABLE;
+  do {
+    var res = await fetch(url + '?pageSize=100' + (offset ? '&offset='+offset : ''), {headers:{'Authorization':'Bearer '+AIRTABLE_TOKEN}});
+    var data = await res.json();
+    if (data.error) { console.error('Airtable error:', data.error); break; }
+    allRecords = allRecords.concat(data.records || []);
+    offset = data.offset || null;
+  } while (offset);
+  return allRecords;
+}
+
+async function loadVendors() {
+  try {
+    var records = await fetchVendorsFromAirtable();
+    return records.filter(function(r){ return r.fields['Vendor Name'] && r.fields['Latitude'] && r.fields['Longitude']; })
+      .map(function(r){
+        var f = r.fields;
+        return {
+          n:       f['Vendor Name'],
+          lat:     parseFloat(f['Latitude']),
+          lng:     parseFloat(f['Longitude']),
+          g:       statusToGroup(f['Inspection Status']),
+          loc:     [f['City'],f['State']].filter(Boolean).join(', '),
+          lat2:    f['Latitude 2']  ? parseFloat(f['Latitude 2'])  : null,
+          lng2:    f['Longitude 2'] ? parseFloat(f['Longitude 2']) : null,
+          last:    f['Last Inspected'] || null,
+          contact: f['Primary Contact'] || '',
+          phone:   f['Phone'] || '',
+          email:   f['Email'] || '',
+          website: f['Website'] || '',
+        };
+      });
+  } catch(e) { console.error(e); return []; }
+}
+
+var V = [], vByName = {};
+
+var TRIPS=[
+  {id:'local',color:'#a78bfa',name:'Beacon Home Base',days:[
+    {label:'Day 1 — Beacon',vendors:['SallyeAnder','Braised Pies']},
+    {label:'Day 2 — South along river',vendors:['Fjord Vineyards','Wild Lea Farm']},
+    {label:'Day 3 — Spirits Lab',vendors:['Spirits Lab']},
+  ]},
+  {id:'gardiner',color:'#34d399',name:'Gardiner / Warwick',days:[
+    {label:'Day 1',vendors:['Whitecliff Vineyard',"Wright's Farm"]},
+    {label:'Day 2',vendors:['Warwick Valley Winery','Drifter Ferments']},
+  ]},
+  {id:'sullivan',color:'#fb923c',name:'Sullivan County',days:[
+    {label:'Day 1',vendors:['Hilly Acres Farm','Hudson Valley Duck Farm']},
+  ]},
+  {id:'hudson',color:'#f472b6',name:'Hudson Valley North',days:[
+    {label:'Day 1 — Pine Plains + Tivoli',vendors:['Chaseholm Farm Creamery','Tivoli Mushrooms']},
+    {label:'Day 2 — Hudson',vendors:['Strudel House',"Cooper's Daughter Spirits"]},
+    {label:'Day 3 — Catskill + Leeds',vendors:['Atina Foods','The River Garden']},
+    {label:'Day 4 — Lake Katrine + Woodstock',vendors:["Pika's Farm Table",'Buddhapesto']},
+    {label:'Day 5 — Staatsburg + Rhinebeck',vendors:['Milea Estate Vineyard','Letterbox Farm']},
+    {label:'Day 6 — Maple View + home',vendors:['Maple View Farm']},
+  ]},
+  {id:'westchester',color:'#60a5fa',name:'Westchester Loop',days:[
+    {label:'Day 1 — Yorktown',vendors:['Bombay Chutney Company','Manor Sangria']},
+    {label:'Day 2 — Shrub Oak + Hastings',vendors:['Bohemian Baked','Taiim Shack Mobile']},
+    {label:'Day 3 — Lower Westchester north',vendors:['Red Barn Bakery','Teagevity | Beanluv']},
+    {label:'Day 4 — Lower Westchester south',vendors:['Trotta Foods','Project Hot Sauce']},
+    {label:'Day 5 — Verplanck',vendors:['Hudson River Apiaries']},
+  ]},
+  {id:'nj',color:'#facc15',name:'New Jersey',days:[
+    {label:'Day 1 — Bergen County',vendors:['Pickle Joy','Live Vessel']},
+    {label:'Day 2 — Bergen County',vendors:['Demi Olive Oil','Puras Paletas']},
+    {label:'Day 3 — West NJ',vendors:['Bien Cuit','Bobolink Dairy & Bakehouse']},
+  ]},
+
+  {id:'nyc',color:'#f87171',name:'NYC Trip',days:[
+    {label:'Day 1 — Bronx',vendors:['3x3 Kitchen Provisions','Gonzalez Farm']},
+    {label:'Day 2 — Orwashers',vendors:['Orwashers Bakery']},
+    {label:'Day 3 — Brooklyn',vendors:['Little Bagel','Grown In Brooklyn']},
+    {label:'Day 4 — Brooklyn + Manhattan',vendors:['Sikkim Hut The Taste of Himalaya']},
+  ]},
+  {id:'li',color:'#2dd4bf',name:'Long Island',days:[
+    {label:'Day 1 — Levittown + Riverhead',vendors:['Knot of This World Pretzels','gajeski produce']},
+    {label:'Day 2 — Pura Vida',vendors:['Pura Vida Fisheries']},
+  ]},
+  {id:'farwest',color:'#94a3b8',name:'Far West / Albany Area',days:[
+    {label:'Day 1 — Cohoes + Hamilton',vendors:['The Peanut Principle','Kriemhild Dairy Farms']},
+  ]},
+  {id:'bonus',color:'#6b7280',name:'Lower Priority',days:[
+    {label:'Day 1 — Sleepy Hollow + Highland',vendors:['Dancing Spirits Herbs','Black Creek Farm']},
+    {label:'Day 2 — Pine Plains + Rhinebeck',vendors:['Hudson Valley Fiber Arts','Living Edge Designs']},
+    {label:'Day 3 — West Milford NJ',vendors:['The Cracker Workshop']},
+  ]},
+];
+
+// ---- MAP ----
+var grps={overdue:[],soon:[],good:[]};
+var vis={overdue:true,soon:true,good:true};
+var map;
+var CLR={overdue:'#e84a4a',soon:'#e8c84a',good:'#4ae878'};
+var LBL={overdue:'Overdue',soon:'Due 2026',good:'Current'};
+
+function mkIcon(c){
+  return L.divIcon({className:'',
+    html:'<div style="width:13px;height:13px;border-radius:50%;background:'+c+';box-shadow:0 0 7px '+c+';border:1.5px solid rgba(255,255,255,0.15);"></div>',
+    iconSize:[13,13],iconAnchor:[6,6]});
+}
+var ICONS={overdue:mkIcon('#e84a4a'),soon:mkIcon('#e8c84a'),good:mkIcon('#4ae878')};
+
+function popup(v){
+  return '<div class="pname">'+v.n+'</div>'+
+    '<span class="ptag tag-'+v.g+'">'+LBL[v.g]+'</span>'+
+    '<div class="pd">Location: <span>'+v.loc+'</span></div>'+
+    '<div class="pd">Last inspected: <span>'+(v.last||'No date')+'</span></div>'+
+    (v.contact?'<div class="pd">Contact: <span>'+v.contact+'</span></div>':'')+
+    (v.phone?'<div class="pd">Phone: <span><a href="tel:'+v.phone+'" style="color:#e8c84a">'+v.phone+'</a></span></div>':'')+
+    (v.email?'<div class="pd">Email: <span><a href="mailto:'+v.email+'" style="color:#e8c84a">'+v.email+'</a></span></div>':'')+
+    (v.website?'<div class="pd"><a href="'+v.website+'" target="_blank" style="color:#e8c84a">Website ↗</a></div>':'');
+}
+
+function toggleGroup(btn){
+  var g=btn.dataset.group; vis[g]=!vis[g];
+  btn.classList.toggle('off',!vis[g]);
+  if(!map)return;
+  grps[g].forEach(function(m){vis[g]?m.addTo(map):map.removeLayer(m);});
+}
+
+function showTab(name,btn){
+  document.querySelectorAll('.page').forEach(function(p){p.classList.remove('active');});
+  document.querySelectorAll('.tab-btn').forEach(function(b){b.classList.remove('active');});
+  document.getElementById('page-'+name).classList.add('active');
+  btn.classList.add('active');
+  document.getElementById('map-toggles').style.display=(name==='map')?'flex':'none';
+  if(name==='map'&&map)setTimeout(function(){map.invalidateSize();},50);
+}
+
+// ---- MINI MAP ----
+var miniMap=null;
+
+function buildMiniMap(trip){
+  var pts=[];
+  trip.days.forEach(function(day,di){
+    day.vendors.forEach(function(vn){
+      var v=vByName[vn]||vByName[vn.toLowerCase()]; if(v) pts.push({v:v,day:di});
+    });
+  });
+
+  var el=document.getElementById('mini-map-el');
+  if(!el)return;
+  if(miniMap){miniMap.remove();miniMap=null;}
+
+  miniMap=L.map(el,{zoomControl:true,attributionControl:false});
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:18}).addTo(miniMap);
+
+  if(pts.length===0){miniMap.setView([41.4,-73.9],8);return;}
+
+  // Day accent colors for border ring
+  var DC=['#e8c84a','#60a5fa','#f472b6','#34d399','#fb923c','#a78bfa','#f87171','#2dd4bf'];
+  pts.forEach(function(p){
+    var dc=DC[p.day%DC.length];
+    var icon=L.divIcon({className:'',
+      html:'<div style="width:13px;height:13px;border-radius:50%;background:'+CLR[p.v.g]+';box-shadow:0 0 6px '+CLR[p.v.g]+';border:2.5px solid '+dc+';"></div>',
+      iconSize:[13,13],iconAnchor:[6,6]});
+    var marker=L.marker([p.v.lat,p.v.lng],{icon:icon})
+      .bindPopup('<div class="pname" style="font-size:.8rem">'+p.v.n+'</div><div class="pd">'+p.v.loc+'</div><div class="pd" style="margin-top:3px;color:'+dc+'">'+trip.days[p.day].label+'</div>',{maxWidth:220})
+      .bindTooltip(p.v.n,{permanent:false,direction:'top',offset:[0,-8],className:'map-tooltip'})
+      .addTo(miniMap);
+  });
+
+  var lats=pts.map(function(p){return p.v.lat;});
+  var lngs=pts.map(function(p){return p.v.lng;});
+  miniMap.fitBounds([
+    [Math.min.apply(null,lats)-0.04,Math.min.apply(null,lngs)-0.04],
+    [Math.max.apply(null,lats)+0.04,Math.max.apply(null,lngs)+0.04]
+  ],{padding:[18,18]});
+}
+
+// ---- TRIPS UI ----
+function getRemainingCount(t){
+  var count=0;
+  t.days.forEach(function(day){
+    day.vendors.forEach(function(vn){
+      var v=vByName[vn]||vByName[vn.toLowerCase()];
+      if(v && v.g!=='good') count++;
+      if(!v) count++; // unmapped still counts as remaining
+    });
+  });
+  return count;
+}
+
+function updateSidebarStats(){
+  // Total inspection days across all trips
+  var totalDays = TRIPS.reduce(function(s,t){ return s + t.days.length; }, 0);
+  // Vendor counts from Airtable data
+  var totalVendors = V.length;
+  var currentVendors = V.filter(function(v){ return v.g === 'good'; }).length;
+  var el_days = document.getElementById('stat-days');
+  var el_done = document.getElementById('stat-done');
+  var el_total = document.getElementById('stat-total');
+  if(el_days) el_days.textContent = totalDays;
+  if(el_done) el_done.textContent = currentVendors;
+  if(el_total) el_total.textContent = totalVendors;
+}
+
+function buildTripList(){
+  var el=document.getElementById('trip-list');
+  TRIPS.forEach(function(t){
+    var total=t.days.reduce(function(s,d){return s+d.vendors.length;},0);
+    var remaining=V.length>0?getRemainingCount(t):total;
+    var done=remaining===0;
+    var d=document.createElement('div');
+    d.className='trip-item'+(done?' trip-done':''); d.dataset.id=t.id;
+    d.innerHTML=
+      '<div class="swatch" style="background:'+(done?'#3a3a28':t.color)+';box-shadow:0 0 5px '+(done?'#3a3a2800':t.color+'66')+'"></div>'+
+      '<div class="ti-info">'+
+        '<div class="ti-name" style="'+(done?'color:var(--mut);text-decoration:line-through':'')+'">'+t.name+'</div>'+
+        '<div class="ti-meta">'+(done?'✓ Complete':t.days.length+' day'+(t.days.length>1?'s':''))+'</div>'+
+      '</div>';
+    d.onclick=function(){selectTrip(t.id);};
+    el.appendChild(d);
+  });
+}
+
+var mapFullscreen = false;
+
+function openTripMap(trip){
+  var overlay = document.getElementById('trip-map-overlay');
+  if(!overlay) return;
+  overlay.classList.add('active');
+  mapFullscreen = true;
+  setTimeout(function(){ buildMiniMap(trip); }, 60);
+}
+
+function closeTripMap(){
+  var overlay = document.getElementById('trip-map-overlay');
+  if(overlay) overlay.classList.remove('active');
+  mapFullscreen = false;
+  if(miniMap){ miniMap.remove(); miniMap=null; }
+}
+
+function selectTrip(id){
+  document.querySelectorAll('.trip-item').forEach(function(el){el.classList.toggle('active',el.dataset.id===id);});
+  var t=TRIPS.find(function(x){return x.id===id;});
+  if(!t)return;
+  if(miniMap){miniMap.remove();miniMap=null;}
+  mapFullscreen=false;
+
+  var daysHtml='';
+  var totalRemaining=0;
+  t.days.forEach(function(day){
+    var rows='';
+    day.vendors.forEach(function(vn){
+      var v=vByName[vn]||vByName[vn.toLowerCase()];
+      if(!v){rows+='<div class="vmissing">'+vn+' — not yet mapped</div>';return;}
+      if(v.g==='good') return; // skip inspected vendors
+      totalRemaining++;
+      rows+=
+        '<div class="vcard">'+
+          '<div class="vcard-inner">'+
+            '<div class="vstatus-bar" style="background:'+CLR[v.g]+'"></div>'+
+            '<div class="vcard-main">'+
+              '<div class="vname">'+v.n+'</div>'+
+              '<div class="vloc-row">'+
+                '<span class="vloc">'+v.loc+'</span>'+
+                '<span class="vlast">'+(v.last?'Last: '+v.last:'Never inspected')+'</span>'+
+              '</div>'+
+            '</div>'+
+            '<span class="vtag tag-'+v.g+'">'+LBL[v.g]+'</span>'+
+          '</div>'+
+        '</div>';
+    });
+    if(!rows) return; // skip empty days
+    daysHtml+=
+      '<div class="day-section">'+
+        '<div class="day-hdr"><div class="day-label">'+day.label+'</div></div>'+
+        rows+
+      '</div>';
+  });
+
+  if(!daysHtml){
+    daysHtml='<div class="empty" style="margin-top:60px;">✓ All vendors in this trip are current!</div>';
+  }
+
+  // Store current trip for map open
+  var tripRef = t;
+
+  document.getElementById('tmain').innerHTML=
+    '<div class="trip-wrap">'+
+      '<div class="trip-header">'+
+        '<div class="trip-color-stripe" style="background:'+t.color+'"></div>'+
+        '<div class="trip-header-info">'+
+          '<div class="trip-title">'+t.name+'</div>'+
+        '</div>'+
+        '<button class="map-view-btn" id="map-view-btn">⤢ View Map</button>'+
+      '</div>'+
+      '<div class="trip-body">'+
+        '<div class="trip-days-col">'+daysHtml+'</div>'+
+        '<div class="trip-map-overlay" id="trip-map-overlay">'+
+          '<div class="map-overlay-header">'+
+            '<span class="map-overlay-title">'+t.name+' — Trip Map</span>'+
+            '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">'+
+              t.days.map(function(d,i){
+                var DC=['#e8c84a','#60a5fa','#f472b6','#34d399','#fb923c','#a78bfa','#f87171','#2dd4bf'];
+                return '<span style="font-size:.55rem;color:'+DC[i%DC.length]+';white-space:nowrap;">⬤ '+d.label+'</span>';
+              }).join('')+
+            '</div>'+
+            '<button class="map-close-btn" onclick="closeTripMap()">✕ Close Map</button>'+
+          '</div>'+
+          '<div id="mini-map-el" class="trip-minimap"></div>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+
+  document.getElementById('map-view-btn').onclick = function(){ openTripMap(tripRef); };
+}
+
+// ---- SEARCH ----
+var markerMap = {}; // vendor name → leaflet marker
+
+function initSearch(){
+  var input = document.getElementById('search-input');
+  var results = document.getElementById('search-results');
+  var clearBtn = document.getElementById('search-clear');
+  if(!input) return;
+
+  input.addEventListener('input', function(){
+    var q = input.value.trim().toLowerCase();
+    clearBtn.style.display = q ? 'block' : 'none';
+    if(q.length < 1){ results.classList.remove('open'); return; }
+
+    var matches = V.filter(function(v){
+      return v.n.toLowerCase().includes(q);
+    }).slice(0, 8);
+
+    if(matches.length === 0){ results.classList.remove('open'); return; }
+
+    results.innerHTML = matches.map(function(v){
+      return '<div class="sr-item" data-name="'+v.n+'">'+
+        '<div class="sr-dot" style="background:'+CLR[v.g]+'"></div>'+
+        '<span>'+v.n+'</span>'+
+        '<span class="sr-loc">'+v.loc+'</span>'+
+      '</div>';
+    }).join('');
+
+    results.querySelectorAll('.sr-item').forEach(function(el){
+      el.onclick = function(){
+        flyToVendor(el.dataset.name);
+        input.value = el.querySelector('span').textContent;
+        clearBtn.style.display = 'block';
+        results.classList.remove('open');
+      };
+    });
+
+    results.classList.add('open');
+  });
+
+  input.addEventListener('blur', function(){
+    setTimeout(function(){ results.classList.remove('open'); }, 150);
+  });
+}
+
+function flyToVendor(name){
+  var v = vByName[name] || vByName[name.toLowerCase()];
+  if(!v || !map) return;
+  map.flyTo([v.lat, v.lng], 13, {duration:0.8});
+  var m = markerMap[v.n];
+  if(m){
+    m.openPopup();
+    // pulse the icon element
+    var el = m.getElement();
+    if(el){
+      var inner = el.querySelector('div');
+      if(inner){
+        inner.classList.remove('pin-highlight');
+        void inner.offsetWidth; // reflow
+        inner.classList.add('pin-highlight');
+        setTimeout(function(){ inner.classList.remove('pin-highlight'); }, 1600);
+      }
+    }
+  }
+}
+
+function clearSearch(){
+  var input = document.getElementById('search-input');
+  var results = document.getElementById('search-results');
+  var clearBtn = document.getElementById('search-clear');
+  if(input) input.value='';
+  if(results) results.classList.remove('open');
+  if(clearBtn) clearBtn.style.display='none';
+  if(map) { map.closePopup(); map.flyTo([41.4,-73.9], 8, {duration:0.8}); }
+}
+
+// ---- INIT ----
+window.addEventListener('load',function(){
+  var lDiv=document.createElement('div');
+  lDiv.id='loading-msg';
+  lDiv.style.cssText='position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#6a6a52;font-family:DM Mono,monospace;font-size:.8rem;z-index:999;pointer-events:none;';
+  lDiv.textContent='Loading vendors...';
+  document.getElementById('page-map').appendChild(lDiv);
+
+  map=L.map('map',{center:[41.4,-73.9],zoom:8});
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'&copy; OpenStreetMap contributors &copy; CARTO',maxZoom:18}).addTo(map);
+  var starIcon=L.divIcon({className:'',
+    html:'<div style="font-size:20px;line-height:1;filter:drop-shadow(0 0 6px #e8c84a);margin-top:-10px;margin-left:-10px;">★</div>',
+    iconSize:[20,20],iconAnchor:[10,10]});
+  L.marker([41.1343,-73.7929],{icon:starIcon})
+    .addTo(map).bindPopup('<div class="pname">Pleasantville Farmers Market</div><div class="pd">Market HQ</div>');
+
+  buildTripList();
+
+  loadVendors().then(function(vendors){
+    V=vendors; vByName={};
+    V.forEach(function(v){vByName[v.n]=v; vByName[v.n.toLowerCase()]=v;});
+    grps={overdue:[],soon:[],good:[]};
+    V.forEach(function(v){
+      var m=L.marker([v.lat,v.lng],{icon:ICONS[v.g]}).bindPopup(popup(v),{maxWidth:280});
+      m.bindTooltip(v.n, {permanent:false, direction:'top', offset:[0,-6], className:'vendor-tip'});
+      m.addTo(map); grps[v.g].push(m);
+      markerMap[v.n]=m;
+      if(v.lat2 && v.lng2){
+        var m2=L.marker([v.lat2,v.lng2],{icon:ICONS[v.g]}).bindPopup(popup(v),{maxWidth:280});
+        m2.bindTooltip(v.n+' (2)', {permanent:false, direction:'top', offset:[0,-6], className:'vendor-tip'});
+        m2.addTo(map); grps[v.g].push(m2);
+      }
+    });
+    var lm=document.getElementById('loading-msg'); if(lm)lm.remove();
+    var counts={overdue:0,soon:0,good:0};
+    V.forEach(function(v){counts[v.g]++;});
+    ['overdue','soon','good'].forEach(function(g){
+      var el=document.getElementById('ct-'+g); if(el)el.textContent=counts[g];
+    });
+    // Rebuild trip list now that we have vendor data for accurate counts
+    document.getElementById('trip-list').innerHTML='';
+    buildTripList();
+    updateSidebarStats();
+    initSearch();
+  });
+});
+</script>
+</body>
+</html>
